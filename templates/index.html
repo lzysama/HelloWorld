@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoPro 屏幕提取器</title>
+<style>
+  :root {
+    --blue: #0066ff;
+    --blue-dark: #0052cc;
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #333;
+    --text: #f0f0f0;
+    --text-dim: #888;
+    --green: #00c853;
+    --red: #ff3d3d;
+    --yellow: #ffc107;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  header {
+    width: 100%;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header svg { color: var(--blue); }
+  header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.5px; }
+  header span { font-size: 0.85rem; color: var(--text-dim); margin-left: 8px; }
+
+  .container {
+    width: 100%;
+    max-width: 760px;
+    padding: 40px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+
+  /* Drop zone */
+  #drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 56px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  #drop-zone.drag-over {
+    border-color: var(--blue);
+    background: rgba(0, 102, 255, 0.06);
+  }
+  #drop-zone .icon { font-size: 3rem; margin-bottom: 12px; }
+  #drop-zone h2 { font-size: 1.1rem; margin-bottom: 6px; }
+  #drop-zone p { color: var(--text-dim); font-size: 0.9rem; }
+  #file-input { display: none; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-dark); }
+  .btn-primary:disabled { background: #444; cursor: not-allowed; }
+  .btn-success { background: var(--green); color: #000; }
+  .btn-success:hover { background: #00a844; }
+
+  /* Feature list */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .feature-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .feature-item .fi { font-size: 1.6rem; }
+  .feature-item strong { font-size: 0.9rem; }
+  .feature-item p { font-size: 0.78rem; color: var(--text-dim); line-height: 1.4; }
+
+  /* Progress area */
+  #progress-area { display: none; flex-direction: column; gap: 16px; }
+  #progress-area.visible { display: flex; }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0;
+    animation: pulse 1.2s infinite;
+  }
+  .dot.blue { background: var(--blue); }
+  .dot.green { background: var(--green); animation: none; }
+  .dot.red { background: var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 99px;
+    transition: width 0.4s ease;
+    width: 0%;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+  .info-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+  .info-box .val { font-size: 1.2rem; font-weight: 700; color: var(--blue); }
+  .info-box .lbl { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+
+  /* filename chip */
+  #file-chip {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+  #file-chip.visible { display: flex; }
+  #file-chip .remove {
+    margin-left: auto; cursor: pointer; color: var(--text-dim); font-size: 1.1rem;
+  }
+
+  #error-msg {
+    display: none;
+    background: rgba(255,61,61,0.1);
+    border: 1px solid rgba(255,61,61,0.3);
+    border-radius: 8px;
+    padding: 14px;
+    color: var(--red);
+    font-size: 0.9rem;
+  }
+  #error-msg.visible { display: block; }
+
+  footer {
+    margin-top: auto;
+    padding: 20px;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+    <rect x="2" y="5" width="20" height="14" rx="3"/>
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M16 5V3M8 5V3"/>
+  </svg>
+  <h1>GoPro 屏幕提取器</h1>
+  <span>Screen Extraction &amp; Enhancement</span>
+</header>
+
+<div class="container">
+
+  <!-- Upload card -->
+  <div class="card">
+    <div id="drop-zone">
+      <div class="icon">🎥</div>
+      <h2>拖拽视频到此处，或点击选择</h2>
+      <p>支持 MP4 · MOV · AVI · MKV &nbsp;·&nbsp; 最大 500 MB</p>
+      <input type="file" id="file-input" accept="video/*">
+    </div>
+
+    <div style="margin-top:16px; display:flex; flex-direction:column; gap:12px;">
+      <div id="file-chip">
+        <span>📄</span>
+        <span id="chip-name"></span>
+        <span class="remove" id="chip-remove" title="移除">✕</span>
+      </div>
+
+      <div id="error-msg"></div>
+
+      <button class="btn btn-primary" id="btn-process" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        开始提取
+      </button>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="features">
+    <div class="feature-item">
+      <div class="fi">🔍</div>
+      <strong>自动检测屏幕</strong>
+      <p>边缘检测 + 轮廓分析，精准定位 GoPro 屏幕矩形</p>
+    </div>
+    <div class="feature-item">
+      <div class="fi">⚡</div>
+      <strong>光流稳定追踪</strong>
+      <p>Lucas-Kanade 光流逐帧追踪屏幕四角，消除抖动</p>
+    </div>
+    <div class="feature-item">
+      <div class="fi">✨</div>
+      <strong>画质增强</strong>
+      <p>CLAHE 对比度 + 反锐化遮罩，让画面更清晰锐利</p>
+    </div>
+    <div class="feature-item">
+      <div class="fi">📐</div>
+      <strong>透视矫正</strong>
+      <p>透视变换自动矫正拍摄角度，输出正视图</p>
+    </div>
+  </div>
+
+  <!-- Progress / result -->
+  <div class="card" id="progress-area">
+    <div class="status-row">
+      <div class="dot blue" id="status-dot"></div>
+      <span id="status-text">处理中...</span>
+      <span style="margin-left:auto; color:var(--text-dim); font-size:0.9rem;" id="pct-text">0%</span>
+    </div>
+    <div class="progress-bar-bg" style="margin-top:12px;">
+      <div class="progress-bar-fill" id="bar-fill"></div>
+    </div>
+    <div class="info-grid" id="info-grid" style="margin-top:20px; display:none;"></div>
+    <div style="margin-top:20px; display:none;" id="download-row">
+      <a id="btn-download" class="btn btn-success" href="#" download="extracted_screen.mp4">
+        ⬇ 下载提取视频
+      </a>
+    </div>
+  </div>
+
+</div>
+
+<footer>处理在本地服务器完成，视频不会上传到任何第三方</footer>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const btnProcess = document.getElementById('btn-process');
+const fileChip = document.getElementById('file-chip');
+const chipName = document.getElementById('chip-name');
+const chipRemove = document.getElementById('chip-remove');
+const errorMsg = document.getElementById('error-msg');
+const progressArea = document.getElementById('progress-area');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const pctText = document.getElementById('pct-text');
+const barFill = document.getElementById('bar-fill');
+const infoGrid = document.getElementById('info-grid');
+const downloadRow = document.getElementById('download-row');
+const btnDownload = document.getElementById('btn-download');
+
+let selectedFile = null;
+let pollInterval = null;
+
+function showError(msg) {
+  errorMsg.textContent = msg;
+  errorMsg.classList.add('visible');
+}
+function clearError() {
+  errorMsg.classList.remove('visible');
+}
+
+function setFile(file) {
+  selectedFile = file;
+  chipName.textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
+  fileChip.classList.add('visible');
+  btnProcess.disabled = false;
+  clearError();
+}
+
+function clearFile() {
+  selectedFile = null;
+  fileChip.classList.remove('visible');
+  btnProcess.disabled = true;
+  fileInput.value = '';
+  clearError();
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+chipRemove.addEventListener('click', (e) => { e.stopPropagation(); clearFile(); });
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+
+btnProcess.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  clearError();
+  btnProcess.disabled = true;
+
+  progressArea.classList.add('visible');
+  statusDot.className = 'dot blue';
+  statusText.textContent = '上传中...';
+  barFill.style.width = '0%';
+  pctText.textContent = '0%';
+  infoGrid.style.display = 'none';
+  downloadRow.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('video', selectedFile);
+
+  let jobId;
+  try {
+    const r = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) { showError(data.error || '上传失败'); btnProcess.disabled = false; return; }
+    jobId = data.job_id;
+  } catch (e) {
+    showError('网络错误，请重试'); btnProcess.disabled = false; return;
+  }
+
+  statusText.textContent = '处理中，请稍候...';
+  barFill.style.width = '5%';
+  pctText.textContent = '5%';
+
+  pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch('/status/' + jobId);
+      const job = await r.json();
+
+      if (job.status === 'processing' || job.status === 'pending') {
+        const pct = Math.max(5, job.progress || 0);
+        barFill.style.width = pct + '%';
+        pctText.textContent = pct + '%';
+      } else if (job.status === 'done') {
+        clearInterval(pollInterval);
+        barFill.style.width = '100%';
+        pctText.textContent = '100%';
+        statusDot.className = 'dot green';
+        statusText.textContent = '提取完成！';
+
+        const info = job.info || {};
+        infoGrid.innerHTML = [
+          ['分辨率', (info.width || '?') + ' × ' + (info.height || '?')],
+          ['帧率', (info.fps ? info.fps.toFixed(1) : '?') + ' fps'],
+          ['总帧数', info.frames || '?'],
+          ['时长', info.fps ? ((info.frames / info.fps).toFixed(1) + ' 秒') : '?'],
+        ].map(([l, v]) => `<div class="info-box"><div class="val">${v}</div><div class="lbl">${l}</div></div>`).join('');
+        infoGrid.style.display = 'grid';
+
+        btnDownload.href = '/download/' + jobId;
+        downloadRow.style.display = 'block';
+        btnProcess.disabled = false;
+
+      } else if (job.status === 'error') {
+        clearInterval(pollInterval);
+        statusDot.className = 'dot red';
+        statusText.textContent = '处理失败';
+        showError(job.message || '未知错误，请检查视频内容');
+        btnProcess.disabled = false;
+      }
+    } catch (e) { /* network hiccup, keep polling */ }
+  }, 1000);
+});
+</script>
+</body>
+</html>
